@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <list>
 #include <new>
 #include <string_view>
 #include <sys/mman.h>
@@ -13,8 +12,7 @@ namespace pmr_allocator::internal {
 
 namespace {
 
-constexpr std::array<size_t, 10> kSizeBins{{
-    8,
+constexpr std::array<size_t, 9> kSizeBins{{
     16,
     64,
     256,
@@ -27,7 +25,6 @@ constexpr std::array<size_t, 10> kSizeBins{{
 }};
 
 size_t FindSizeBin(size_t bytes) {
-  // Find bin size
   size_t szBin = kSizeBins.front();
   for (const auto &s : kSizeBins) {
     if (bytes <= s) {
@@ -43,7 +40,6 @@ size_t FindSizeBin(size_t bytes) {
 PerThreadAllocator::PerThreadAllocator(const size_t max_initial_size)
     : buffer_capactiy_(max_initial_size) {
 
-  // Use mmap to get memory from the OS
   buffer_ = mmap(nullptr, buffer_capactiy_, PROT_READ | PROT_WRITE,
                  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
@@ -52,17 +48,14 @@ PerThreadAllocator::PerThreadAllocator(const size_t max_initial_size)
   }
 
   for (const auto &s : kSizeBins) {
-    size_slabs_.insert({s, SizeBinEntry(&free_list_mbr_)});
+    size_slabs_.insert({s, SizeBinEntry{}});
   }
 }
 
 PerThreadAllocator::~PerThreadAllocator() {
   munmap(buffer_, buffer_capactiy_);
   if (!fallback_allocations_.empty()) {
-    // memory leak detected
     constexpr std::string_view msg{"Memory leak detected"};
-
-    // Can't do much here, ignore return value
     std::ignore = write(STDERR_FILENO, msg.data(), msg.size());
   }
 }
@@ -76,12 +69,11 @@ size_t PerThreadAllocator::allocation_size(void *p) const {
               reinterpret_cast<const void *>(reinterpret_cast<uintptr_t>(p) -
                                              sizeof(Header)),
               sizeof(Header));
-  // h.sz is the full bin size; subtract the embedded header to get user space
   return h.sz - sizeof(Header);
 }
 
 void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
-  // Use mmap for sizes above 64 Kb
+  // Sizes above the largest slab bin go directly through mmap.
   if (bytes > kSizeBins.back()) {
     void *p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE,
                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -94,18 +86,25 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
 
   void *p = nullptr;
   auto szBin = FindSizeBin(bytes + sizeof(Header));
+  auto &entry = size_slabs_.at(szBin);
+  void *&head = entry.free_list_head;
 
-  auto &free_list = size_slabs_.at(szBin).free_list;
-
-  // Find the first free entry
-  if (!free_list.empty()) {
-    p = free_list.begin()->addr;
-    free_list.pop_front();
+  if (head != nullptr) {
+    // Sanity check: head should point within our buffer. If corrupted, discard
+    // the free list and allocate fresh memory instead.
+    uintptr_t head_addr = reinterpret_cast<uintptr_t>(head);
+    uintptr_t buf_start = reinterpret_cast<uintptr_t>(buffer_);
+    uintptr_t buf_end = buf_start + buffer_capactiy_;
+    if (head_addr >= buf_start && head_addr < buf_end) {
+      p = head;
+      void *next;
+      std::memcpy(&next, p, sizeof(void *));
+      head = next;
+    }
   }
 
-  // Find from buffer
+  // Carve a new slot out of the main buffer if the free list was empty.
   if (!p && (buffer_capactiy_ > buffer_occupied_)) {
-    // Find next alignment
     uintptr_t next_addr =
         reinterpret_cast<uintptr_t>(buffer_) + buffer_occupied_;
 
@@ -125,12 +124,13 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
   if (!p) {
     throw std::bad_alloc{};
   }
+
   Header h{szBin};
   auto header_location =
       reinterpret_cast<void *>(reinterpret_cast<uintptr_t>(p) - sizeof(Header));
   std::memcpy(header_location, &h, sizeof(Header));
 
-  ++size_slabs_.at(szBin).num_allocated;
+  ++entry.num_allocated;
 
   return p;
 }
@@ -138,12 +138,11 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
 void PerThreadAllocator::do_deallocate(void *p, size_t bytes,
                                        size_t alignment) {
   static_cast<void>(alignment);
+
   if (fallback_allocations_.contains(p)) {
     if ((bytes > 0) && bytes != fallback_allocations_.at(p)) {
-      // Placeholder print, add more logic later
       constexpr std::string_view msg{
           "Size being deallocated different than what was allocated"};
-      // Can't do much here, ignore return value
       std::ignore = write(STDERR_FILENO, msg.data(), msg.size());
     }
     munmap(p, fallback_allocations_.at(p));
@@ -167,13 +166,13 @@ void PerThreadAllocator::do_deallocate(void *p, size_t bytes,
   if (bin.num_allocated == bin.num_deallocated) {
     constexpr std::string_view msg{
         "Something went wrong, memory being freed again?"};
-    // Can't do much here, ignore return value
     std::ignore = write(STDERR_FILENO, msg.data(), msg.size());
     return;
   }
 
-  auto &free_list = bin.free_list;
-  free_list.push_back(FreeListEntry{p});
+  void *&head = bin.free_list_head;
+  std::memcpy(p, &head, sizeof(void *));
+  head = p;
 
   ++bin.num_deallocated;
 }

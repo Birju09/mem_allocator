@@ -1,7 +1,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdlib>
-#include <list>
 #include <memory_resource>
 #include <unordered_map>
 
@@ -27,35 +26,26 @@ private:
   size_t buffer_capactiy_{};
   size_t buffer_occupied_{};
 
-  struct FreeListEntry {
-    void *addr;
+  struct Header {
+    size_t sz;
   };
 
-  // Max size for free list
-  // Stack allocated list
-  // 1 Mb control block for book keeping
+  struct SizeBinEntry {
+    void  *free_list_head{nullptr};
+    size_t num_allocated{};
+    size_t num_deallocated{};
+  };
+
   static constexpr size_t kMaxFreeListSize = 0x100000;
   std::array<char, kMaxFreeListSize> free_list_buf_{};
   std::pmr::monotonic_buffer_resource free_list_mbr_{
       free_list_buf_.data(), free_list_buf_.size(),
       std::pmr::null_memory_resource()};
 
-  struct SizeBinEntry {
-    SizeBinEntry(std::pmr::memory_resource *pmr) : free_list(pmr) {}
-
-    std::pmr::list<FreeListEntry> free_list;
-    size_t num_allocated{};
-    size_t num_deallocated{};
-  };
-
-  struct Header {
-    size_t sz;
-  };
-
   // For book keeping
   std::pmr::unordered_map<size_t, SizeBinEntry> size_slabs_{&free_list_mbr_};
 
-  // Fallback allocations
+  // Fallback allocations (mmap'd blocks > largest slab bin)
   std::pmr::unordered_map<void *, size_t> fallback_allocations_{
       &free_list_mbr_};
 };
