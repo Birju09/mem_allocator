@@ -1,0 +1,6 @@
+{
+    "clangd.fallbackFlags": [
+        "-std=c++20",
+        "-I/Users/birjuvachhani/Desktop/Learning/mem_allocator/src/pmr_allocators"
+    ]
+}
