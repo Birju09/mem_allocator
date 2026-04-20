@@ -10,5 +10,8 @@ target_link_libraries(mem_allocator_tests
         GTest::gtest_main
 )
 
+target_compile_options(mem_allocator_tests PRIVATE "-fsanitize=address,undefined")
+target_link_options(mem_allocator_tests PRIVATE "-fsanitize=address,undefined")
+
 include(GoogleTest)
 gtest_discover_tests(mem_allocator_tests)
