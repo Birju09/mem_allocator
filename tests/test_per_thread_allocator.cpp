@@ -1,4 +1,5 @@
 #include "per_thread_allocator.h"
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <gtest/gtest.h>
@@ -21,26 +22,26 @@ constexpr size_t kAlign = alignof(std::max_align_t);
 static size_t read_header_bin(void *user_ptr) {
   size_t sz{};
   std::memcpy(&sz,
-              reinterpret_cast<const void *>(reinterpret_cast<uintptr_t>(user_ptr) -
-                                             sizeof(size_t)),
+              reinterpret_cast<const void *>(
+                  reinterpret_cast<uintptr_t>(user_ptr) - sizeof(size_t)),
               sizeof(size_t));
   return sz;
 }
 
 // Print one allocation's memory layout for debugging
 static void print_alloc_layout(const char *label, void *user_ptr,
-                                size_t requested, size_t usable) {
+                               size_t requested, size_t usable) {
   uintptr_t user_addr = reinterpret_cast<uintptr_t>(user_ptr);
-  uintptr_t hdr_addr  = user_addr - sizeof(size_t);
-  size_t    bin_size  = read_header_bin(user_ptr);
+  uintptr_t hdr_addr = user_addr - sizeof(size_t);
+  size_t bin_size = read_header_bin(user_ptr);
 
   std::cout << "\n  [" << label << "]"
             << "  requested=" << std::setw(6) << requested << " B"
-            << "  bin="       << std::setw(6) << bin_size  << " B"
-            << "  usable="    << std::setw(6) << usable    << " B"
-            << "  hdr@0x"     << std::hex     << hdr_addr
-            << "  usr@0x"     << user_addr    << std::dec
-            << "  aligned="   << (user_addr % kAlign == 0 ? "yes" : "NO ");
+            << "  bin=" << std::setw(6) << bin_size << " B"
+            << "  usable=" << std::setw(6) << usable << " B"
+            << "  hdr@0x" << std::hex << hdr_addr << "  usr@0x" << user_addr
+            << std::dec
+            << "  aligned=" << (user_addr % kAlign == 0 ? "yes" : "NO ");
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +65,8 @@ TEST(PerThreadAllocatorTest, AllocatedPointerIsAligned) {
 
 TEST(PerThreadAllocatorTest, AlignmentForVariousSizes) {
   Allocator alloc(1 << 20);
-  const size_t sizes[] = {1, 7, 8, 9, 16, 32, 55, 63, 64, 100, 256, 500, 1024, 4096};
+  const size_t sizes[] = {1,  7,  8,   9,   16,  32,   55,
+                          63, 64, 100, 256, 500, 1024, 4096};
   for (size_t sz : sizes) {
     void *p = alloc.allocate(sz, kAlign);
     ASSERT_NE(p, nullptr) << "allocation of " << sz << " bytes returned null";
@@ -95,12 +97,11 @@ TEST(PerThreadAllocatorTest, AllocationSizeAtLeastRequested) {
 TEST(PerThreadAllocatorTest, AllocationSizeMatchesBin) {
   Allocator alloc(1 << 20);
 
-  // Requests that map to the 64-byte bin (FindSizeBin(req + 8) == 64 when
-  // 17 <= req+8 <= 64, i.e. 9 <= req <= 56).
-  for (size_t req : {size_t{9}, size_t{32}, size_t{56}}) {
+  // Requests that map to the 64-byte bin
+  for (size_t req : {size_t{17}, size_t{32}, size_t{64}}) {
     void *p = alloc.allocate(req, kAlign);
     // bin=64, header=8 → usable=56
-    EXPECT_EQ(alloc.allocation_size(p), 56u) << "requested=" << req;
+    EXPECT_EQ(alloc.allocation_size(p), 64u) << "requested=" << req;
     alloc.deallocate(p, 0);
   }
 }
@@ -112,7 +113,7 @@ TEST(PerThreadAllocatorTest, AllocationSizeMatchesBin) {
 TEST(PerThreadAllocatorTest, FreeListReuseAfterUnsizedDealloc) {
   Allocator alloc(1 << 20);
   void *p1 = alloc.allocate(16, kAlign);
-  alloc.deallocate(p1, 0);     // free with bytes=0 → reads header
+  alloc.deallocate(p1, 0); // free with bytes=0 → reads header
   void *p2 = alloc.allocate(16, kAlign);
   EXPECT_EQ(p1, p2) << "second allocation should reuse the free-list slot";
   alloc.deallocate(p2, 0);
@@ -144,7 +145,8 @@ TEST(PerThreadAllocatorTest, FreeListReuseAfterSizedDealloc) {
   void *p1 = alloc.allocate(8, kAlign);
   alloc.deallocate(p1, 8, kAlign); // sized path
   void *p2 = alloc.allocate(8, kAlign);
-  EXPECT_EQ(p1, p2) << "sized deallocate should put pointer in bin-16 free list";
+  EXPECT_EQ(p1, p2)
+      << "sized deallocate should put pointer in bin-16 free list";
   alloc.deallocate(p2, 0);
 }
 
@@ -222,14 +224,13 @@ TEST(PerThreadAllocatorTest, PrintMemoryLayout) {
   std::cout << "\n\n=== Memory Layout Dump ===\n";
   std::cout << "  sizeof(size_t) / Header  = " << sizeof(size_t) << " bytes\n";
   std::cout << "  alignof(max_align_t)     = " << kAlign << " bytes\n";
-  std::cout << "  Allocator object @ 0x"
-            << std::hex << reinterpret_cast<uintptr_t>(&alloc)
-            << std::dec << "\n";
+  std::cout << "  Allocator object @ 0x" << std::hex
+            << reinterpret_cast<uintptr_t>(&alloc) << std::dec << "\n";
 
   // One allocation per size bin
-  const size_t test_sizes[] = {1, 8, 9, 56, 57, 248, 249, 504, 505, 1016,
-                                1017, 2040, 2041, 4088, 4089, 16376, 16377,
-                                65524, 65525};
+  const size_t test_sizes[] = {1,    8,     9,     56,    57,   248,  249,
+                               504,  505,   1016,  1017,  2040, 2041, 4088,
+                               4089, 16376, 16377, 65524, 65525};
   std::cout << "\n  Bin allocations (header-before layout):";
 
   std::vector<void *> ptrs;
@@ -260,15 +261,16 @@ TEST(PerThreadAllocatorTest, PrintMemoryLayout) {
   alloc.deallocate(orig, 0);
   void *reused = alloc.allocate(64, kAlign);
   uintptr_t reused_addr = reinterpret_cast<uintptr_t>(reused);
-  std::cout << "\n  orig   @ 0x" << std::hex << orig_addr
-            << "\n  reused @ 0x" << reused_addr << std::dec
+  std::cout << "\n  orig   @ 0x" << std::hex << orig_addr << "\n  reused @ 0x"
+            << reused_addr << std::dec
             << "  same=" << (orig_addr == reused_addr ? "yes" : "no") << "\n";
   alloc.deallocate(reused, 0);
 
   std::cout << "\n=== End Layout Dump ===\n\n";
 
   // Clean up
-  for (auto p : ptrs) alloc.deallocate(p, 0);
+  for (auto p : ptrs)
+    alloc.deallocate(p, 0);
   for (size_t i = 0; i < fallback_ptrs.size(); ++i)
     alloc.deallocate(fallback_ptrs[i], fallback_sizes[i]);
 }

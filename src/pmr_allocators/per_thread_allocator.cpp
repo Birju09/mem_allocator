@@ -1,4 +1,5 @@
 #include "per_thread_allocator.h"
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -12,16 +13,18 @@ namespace pmr_allocator::internal {
 
 namespace {
 
+constexpr size_t kHeaderSize = 8;
+
 constexpr std::array<size_t, 9> kSizeBins{{
-    16,
-    64,
-    256,
-    512,
-    1024,
-    2048,
-    4096,
-    16384,
-    65536,
+    16 + kHeaderSize,
+    64 + kHeaderSize,
+    256 + kHeaderSize,
+    512 + kHeaderSize,
+    1024 + kHeaderSize,
+    2048 + kHeaderSize,
+    4096 + kHeaderSize,
+    16384 + kHeaderSize,
+    65536 + kHeaderSize,
 }};
 
 // Returns the index into kSizeBins for a given size.
@@ -77,7 +80,7 @@ size_t PerThreadAllocator::allocation_size(void *p) const {
 
 void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
   // Sizes above the largest slab bin go directly through mmap.
-  if (bytes > kSizeBins.back()) {
+  if ((bytes + sizeof(Header)) > kSizeBins.back()) {
     void *p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE,
                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (p == MAP_FAILED) {
@@ -102,6 +105,8 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
     return p;
   }
 
+  static_assert(kHeaderSize == sizeof(Header));
+
   void *p = nullptr;
   auto binIdx = FindSizeBinIndex(bytes + sizeof(Header));
   auto szBin = kSizeBins[binIdx];
@@ -117,6 +122,8 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
     if (head_addr >= buf_start && head_addr < buf_end) {
       p = head;
       void *next;
+      // The next pointer is stored in this free block
+      // Set the head to that pointer
       std::memcpy(&next, p, sizeof(void *));
       head = next;
     }
