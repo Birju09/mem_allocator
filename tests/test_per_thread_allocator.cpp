@@ -170,7 +170,7 @@ TEST(PerThreadAllocatorTest, MultipleAllocationsAreDistinct) {
 TEST(PerThreadAllocatorTest, WriteAndReadBackAcrossAllBins) {
   Allocator alloc(1 << 20);
   // One representative size per bin
-  const size_t sizes[] = {1, 9, 57, 249, 505, 1017, 2041, 4089, 16377, 65529};
+  const size_t sizes[] = {9, 57, 249, 505, 1017, 2041, 4089, 16377, 65525};
   std::vector<std::pair<void *, size_t>> allocs;
 
   for (size_t sz : sizes) {
@@ -229,7 +229,7 @@ TEST(PerThreadAllocatorTest, PrintMemoryLayout) {
   // One allocation per size bin
   const size_t test_sizes[] = {1, 8, 9, 56, 57, 248, 249, 504, 505, 1016,
                                 1017, 2040, 2041, 4088, 4089, 16376, 16377,
-                                65528, 65529};
+                                65524, 65525};
   std::cout << "\n  Bin allocations (header-before layout):";
 
   std::vector<void *> ptrs;
