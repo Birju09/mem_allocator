@@ -10,6 +10,21 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# LLVM XRay instrumentation for performance profiling
+option(MEM_ALLOCATOR_ENABLE_XRAY "Enable LLVM XRay instrumentation" OFF)
+
+if(MEM_ALLOCATOR_ENABLE_XRAY)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "XRay instrumentation requires Clang compiler")
+    endif()
+
+    add_compile_options(-fxray-instrument)
+    add_compile_options(-fxray-instruction-threshold=10)  # Instrument functions with ≥10 instructions
+    add_link_options(-fxray-instrument)
+
+    message(STATUS "LLVM XRay instrumentation enabled (basic mode)")
+endif()
+
 add_subdirectory(src/pmr_allocators)
 add_subdirectory(src/preload)
 

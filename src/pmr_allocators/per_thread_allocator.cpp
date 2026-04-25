@@ -24,15 +24,14 @@ constexpr std::array<size_t, 9> kSizeBins{{
     65536,
 }};
 
-size_t FindSizeBin(size_t bytes) {
-  size_t szBin = kSizeBins.front();
-  for (const auto &s : kSizeBins) {
-    if (bytes <= s) {
-      szBin = s;
-      break;
-    }
+// Returns the index into kSizeBins for a given size.
+// If bytes exceeds the largest bin, returns kSizeBins.size().
+size_t FindSizeBinIndex(size_t bytes) {
+  for (size_t i = 0; i < kSizeBins.size(); ++i) {
+    if (bytes <= kSizeBins[i])
+      return i;
   }
-  return szBin;
+  return kSizeBins.size();
 }
 
 } // namespace
@@ -46,23 +45,27 @@ PerThreadAllocator::PerThreadAllocator(const size_t max_initial_size)
   if (buffer_ == MAP_FAILED) {
     throw std::bad_alloc{};
   }
-
-  for (const auto &s : kSizeBins) {
-    size_slabs_.insert({s, SizeBinEntry{}});
-  }
 }
 
-PerThreadAllocator::~PerThreadAllocator() {
-  munmap(buffer_, buffer_capactiy_);
-  if (!fallback_allocations_.empty()) {
+PerThreadAllocator::~PerThreadAllocator() noexcept {
+  // munmap first, before any other operations that might call into the runtime.
+  if (buffer_ != nullptr) {
+    munmap(buffer_, buffer_capactiy_);
+    buffer_ = nullptr;
+  }
+
+  // Only write to stderr if we have outstanding fallback allocations.
+  if (fallback_count_ > 0) {
     constexpr std::string_view msg{"Memory leak detected"};
     std::ignore = write(STDERR_FILENO, msg.data(), msg.size());
   }
 }
 
 size_t PerThreadAllocator::allocation_size(void *p) const {
-  if (fallback_allocations_.contains(p)) {
-    return fallback_allocations_.at(p);
+  // Check fallback entries first.
+  for (const auto &entry : fallback_entries_) {
+    if (entry.used && entry.ptr == p)
+      return entry.size;
   }
   Header h;
   std::memcpy(&h,
@@ -80,13 +83,29 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
     if (p == MAP_FAILED) {
       throw std::bad_alloc{};
     }
-    fallback_allocations_.insert({p, bytes});
+    // Find a free slot in the fallback table.
+    bool found = false;
+    for (auto &entry : fallback_entries_) {
+      if (!entry.used) {
+        entry.ptr = p;
+        entry.size = bytes;
+        entry.used = true;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      munmap(p, bytes);
+      throw std::bad_alloc{};
+    }
+    ++fallback_count_;
     return p;
   }
 
   void *p = nullptr;
-  auto szBin = FindSizeBin(bytes + sizeof(Header));
-  auto &entry = size_slabs_.at(szBin);
+  auto binIdx = FindSizeBinIndex(bytes + sizeof(Header));
+  auto szBin = kSizeBins[binIdx];
+  auto &entry = size_slabs_[binIdx];
   void *&head = entry.free_list_head;
 
   if (head != nullptr) {
@@ -139,15 +158,21 @@ void PerThreadAllocator::do_deallocate(void *p, size_t bytes,
                                        size_t alignment) {
   static_cast<void>(alignment);
 
-  if (fallback_allocations_.contains(p)) {
-    if ((bytes > 0) && bytes != fallback_allocations_.at(p)) {
-      constexpr std::string_view msg{
-          "Size being deallocated different than what was allocated"};
-      std::ignore = write(STDERR_FILENO, msg.data(), msg.size());
+  // Check fallback table.
+  for (auto &entry : fallback_entries_) {
+    if (entry.used && entry.ptr == p) {
+      if ((bytes > 0) && bytes != entry.size) {
+        constexpr std::string_view msg{
+            "Size being deallocated different than what was allocated"};
+        std::ignore = write(STDERR_FILENO, msg.data(), msg.size());
+      }
+      munmap(p, entry.size);
+      entry.used = false;
+      entry.ptr = nullptr;
+      entry.size = 0;
+      --fallback_count_;
+      return;
     }
-    munmap(p, fallback_allocations_.at(p));
-    fallback_allocations_.erase(p);
-    return;
   }
 
   if (bytes == 0) {
@@ -160,13 +185,10 @@ void PerThreadAllocator::do_deallocate(void *p, size_t bytes,
     bytes += sizeof(Header);
   }
 
-  auto szBin = FindSizeBin(bytes);
-  auto &bin = size_slabs_.at(szBin);
+  auto binIdx = FindSizeBinIndex(bytes);
+  auto &bin = size_slabs_[binIdx];
 
   if (bin.num_allocated == bin.num_deallocated) {
-    constexpr std::string_view msg{
-        "Something went wrong, memory being freed again?"};
-    std::ignore = write(STDERR_FILENO, msg.data(), msg.size());
     return;
   }
 

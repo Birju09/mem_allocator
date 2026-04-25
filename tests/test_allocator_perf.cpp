@@ -6,22 +6,24 @@
 #include <gtest/gtest.h>
 #include <iomanip>
 #include <iostream>
+#include <ratio>
 #include <string>
 #include <thread>
 #include <vector>
+#include <memory>
 
 // ---------------------------------------------------------------------------
 // Benchmark infrastructure
 // ---------------------------------------------------------------------------
 
 struct BenchResult {
-  double duration_us; // microseconds
+  double duration_ns;
   long long ops;
   bool exhausted; // true if bad_alloc stopped the run early
 };
 
 static double ops_per_sec(const BenchResult &r) {
-  return r.ops * 1.0e6 / r.duration_us;
+  return r.ops * 1.0e9 / r.duration_ns;
 }
 
 // Spin barrier: all N threads block at arrive_and_wait() until all have
@@ -52,7 +54,8 @@ template <typename Fn> BenchResult run_bench(long long iters, Fn &&fn) {
     exhausted = true;
   }
   auto t1 = std::chrono::steady_clock::now();
-  double us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+  double us = std::chrono::duration<double, std::nano>(t1 - t0).count();
+
   return {us, actual, exhausted};
 }
 
@@ -70,6 +73,7 @@ BenchResult run_bench_mt(int nthreads, long long iters_per_thread, Fn &&fn) {
   threads.reserve(nthreads);
   for (int i = 0; i < nthreads; ++i) {
     threads.emplace_back([&]() {
+      // Each thread automatically gets its own allocator on first use
       barrier.arrive_and_wait(); // wait for all threads to be ready
       long long done = 0;
       try {
@@ -89,13 +93,13 @@ BenchResult run_bench_mt(int nthreads, long long iters_per_thread, Fn &&fn) {
     t.join();
   auto t1 = std::chrono::steady_clock::now();
 
-  double us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+  double us = std::chrono::duration<double, std::nano>(t1 - t0).count();
   return {us, total_ops.load(), stop.load()};
 }
 
 static void print_result(const std::string &label, const BenchResult &r) {
   std::cout << "  " << std::left << std::setw(52) << label << std::fixed
-            << std::setprecision(1) << std::setw(9) << r.duration_us << " us"
+            << std::setprecision(1) << std::setw(9) << r.duration_ns << " ns"
             << "   " << std::setprecision(0) << std::setw(13) << ops_per_sec(r)
             << " ops/s";
   if (r.exhausted)
@@ -181,7 +185,7 @@ TEST(AllocPerfTest, SingleThread_BatchAllocThenFree) {
         free(ptrs[i]);
     });
     // Each round does kBatch allocs + kBatch frees = 2*kBatch ops.
-    BenchResult adj{r.duration_us, r.ops * kBatch * 2, r.exhausted};
+    BenchResult adj{r.duration_ns, r.ops * kBatch * 2, r.exhausted};
     print_result(label("batch alloc+free", 1, sz), adj);
   }
 
@@ -266,7 +270,7 @@ TEST(AllocPerfTest, MultiThread_SmallAllocScaling) {
       static_cast<char *>(p)[63] = 0x42;
       free(p);
     });
-    print_result(label("alloc/free", 1, kSize), r);
+    print_result(label("alloc/free", nthreads, kSize), r);
   }
 
   SUCCEED();
@@ -349,7 +353,7 @@ TEST(AllocPerfTest, MultiThread_BatchAllocFree) {
         free(ptrs[i]);
     });
     // Each round = kBatch allocs + kBatch frees = 2*kBatch ops.
-    BenchResult adj{r.duration_us, r.ops * kBatch * 2, r.exhausted};
+    BenchResult adj{r.duration_ns, r.ops * kBatch * 2, r.exhausted};
     print_result(label("batch alloc+free", nthreads, kSize), adj);
   }
 

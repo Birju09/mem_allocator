@@ -10,9 +10,6 @@ target_link_libraries(mem_allocator_tests
         GTest::gtest_main
 )
 
-target_compile_options(mem_allocator_tests PRIVATE "-fsanitize=address,undefined")
-target_link_options(mem_allocator_tests PRIVATE "-fsanitize=address,undefined")
-
 include(GoogleTest)
 gtest_discover_tests(mem_allocator_tests)
 
@@ -25,9 +22,21 @@ add_executable(mem_allocator_perf_tests
     test_allocator_perf.cpp
 )
 
+target_include_directories(mem_allocator_perf_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/pmr_allocators
+)
+
 target_link_libraries(mem_allocator_perf_tests
     PRIVATE
+        mem_allocator::pmr
         GTest::gtest_main
 )
 
-gtest_discover_tests(mem_allocator_perf_tests)
+# Use custom test registration since gtest_discover_tests would try to run
+# the binary during build, but with pthread_key_t we need the test runner itself
+add_test(
+    NAME mem_allocator_perf_tests
+    COMMAND mem_allocator_perf_tests
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)

@@ -6,7 +6,7 @@
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
-      "toolchainFile": "${sourceDir}/build/${presetName}/generators/conan_toolchain.cmake",
+      "toolchainFile": "${sourceDir}/build/${presetName}/conan_toolchain.cmake",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
@@ -17,6 +17,8 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
         "MEM_ALLOCATOR_BUILD_TESTS": "ON"
       }
     },
@@ -26,9 +28,11 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
         "MEM_ALLOCATOR_BUILD_TESTS": "ON",
-        "CMAKE_CXX_FLAGS": "-Werror -Wall",
-        "CMAKE_C_FLAGS": "-Werror -Wall"
+        "CMAKE_CXX_FLAGS": "-O3 -Wextra -Werror -Wall",
+        "CMAKE_C_FLAGS": "-O3 -Wextra -Werror -Wall"
       }
     },
     {
@@ -37,7 +41,23 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
         "MEM_ALLOCATOR_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "debug-xray",
+      "displayName": "Debug with XRay",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/debug-xray",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "MEM_ALLOCATOR_BUILD_TESTS": "ON",
+        "MEM_ALLOCATOR_ENABLE_XRAY": "ON"
       }
     }
   ],
@@ -53,6 +73,10 @@
     {
       "name": "release-with-tests",
       "configurePreset": "release-with-tests"
+    },
+    {
+      "name": "debug-xray",
+      "configurePreset": "debug-xray"
     }
   ],
   "testPresets": [
@@ -66,6 +90,13 @@
     {
       "name": "release-with-tests",
       "configurePreset": "release-with-tests",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug-xray",
+      "configurePreset": "debug-xray",
       "output": {
         "outputOnFailure": true
       }

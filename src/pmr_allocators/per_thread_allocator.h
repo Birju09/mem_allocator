@@ -2,14 +2,13 @@
 #include <cstddef>
 #include <cstdlib>
 #include <memory_resource>
-#include <unordered_map>
 
 namespace pmr_allocator::internal {
 
 class PerThreadAllocator : public std::pmr::memory_resource {
 public:
   PerThreadAllocator(const std::size_t max_initial_size);
-  ~PerThreadAllocator();
+  ~PerThreadAllocator() noexcept;
 
   // Returns the usable size of an allocation (needed for realloc).
   size_t allocation_size(void *p) const;
@@ -36,18 +35,19 @@ private:
     size_t num_deallocated{};
   };
 
-  static constexpr size_t kMaxFreeListSize = 0x100000;
-  std::array<char, kMaxFreeListSize> free_list_buf_{};
-  std::pmr::monotonic_buffer_resource free_list_mbr_{
-      free_list_buf_.data(), free_list_buf_.size(),
-      std::pmr::null_memory_resource()};
+  static constexpr size_t kNumSizeBins = 9;
+  std::array<SizeBinEntry, kNumSizeBins> size_slabs_{};
 
-  // For book keeping
-  std::pmr::unordered_map<size_t, SizeBinEntry> size_slabs_{&free_list_mbr_};
-
-  // Fallback allocations (mmap'd blocks > largest slab bin)
-  std::pmr::unordered_map<void *, size_t> fallback_allocations_{
-      &free_list_mbr_};
+  // Fallback allocations (mmap'd blocks > largest slab bin).
+  // Fixed-size table to avoid any heap/PMR allocation.
+  struct FallbackEntry {
+    void *ptr{nullptr};
+    size_t size{0};
+    bool used{false};
+  };
+  static constexpr size_t kMaxFallbackEntries = 256;
+  std::array<FallbackEntry, kMaxFallbackEntries> fallback_entries_{};
+  size_t fallback_count_{0};
 };
 
 } // namespace pmr_allocator::internal
