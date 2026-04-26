@@ -10,6 +10,23 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Clang-tidy integration for static analysis
+option(MEM_ALLOCATOR_ENABLE_CLANG_TIDY "Enable clang-tidy checks during build" OFF)
+
+if(MEM_ALLOCATOR_ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE clang-tidy-18)
+    if(CLANG_TIDY_EXE)
+        message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
+        set(CMAKE_CXX_CLANG_TIDY
+            ${CLANG_TIDY_EXE};
+            --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy;
+            --header-filter=src/.*
+        )
+    else()
+        message(WARNING "MEM_ALLOCATOR_ENABLE_CLANG_TIDY enabled but clang-tidy not found")
+    endif()
+endif()
+
 # LLVM XRay instrumentation for performance profiling
 option(MEM_ALLOCATOR_ENABLE_XRAY "Enable LLVM XRay instrumentation" OFF)
 
