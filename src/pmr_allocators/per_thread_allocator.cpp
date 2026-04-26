@@ -129,7 +129,7 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
     uintptr_t buf_start = reinterpret_cast<uintptr_t>(buffer_);
     if (head_addr >= buf_start && head_addr < buf_end_) {
       p = head;
-      void *next;
+      void *next{nullptr};
       // The next pointer is stored in this free block
       // Set the head to that pointer
       std::memcpy(&next, p, sizeof(void *));

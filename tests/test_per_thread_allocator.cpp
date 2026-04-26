@@ -203,7 +203,7 @@ TEST(PerThreadAllocatorTest, WriteAndReadBackAcrossAllBins) {
 
 TEST(PerThreadAllocatorTest, LargeAllocationFallbackPath) {
   Allocator alloc(1 << 20);
-  const size_t large = 128 * 1024; // 128 KB
+  const size_t large = static_cast<size_t>(128) * 1024; // 128 KB
   void *p = alloc.allocate(large, kAlign);
   ASSERT_NE(p, nullptr);
   // allocation_size returns the exact requested bytes (no bin rounding)
@@ -213,7 +213,7 @@ TEST(PerThreadAllocatorTest, LargeAllocationFallbackPath) {
 
 TEST(PerThreadAllocatorTest, LargeAllocationIsWritable) {
   Allocator alloc(1 << 20);
-  const size_t large = 256 * 1024;
+  const size_t large = static_cast<size_t>(256) * 1024;
   void *p = alloc.allocate(large, kAlign);
   std::memset(p, 0x55, large);
   const unsigned char *bytes = static_cast<const unsigned char *>(p);
@@ -250,7 +250,7 @@ TEST(PerThreadAllocatorTest, PrintMemoryLayout) {
 
   // Fallback (mmap) path
   std::cout << "\n\n  Fallback (mmap) allocations:";
-  const size_t fallback_sizes[] = {65537, 128 * 1024, 1024 * 1024};
+  const size_t fallback_sizes[] = {65537, static_cast<size_t>(128) * 1024, static_cast<size_t>(1024) * 1024};
   std::vector<void *> fallback_ptrs;
   for (size_t sz : fallback_sizes) {
     void *p = alloc.allocate(sz, kAlign);

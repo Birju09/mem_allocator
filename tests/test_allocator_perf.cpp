@@ -23,7 +23,7 @@ struct BenchResult {
 };
 
 static double ops_per_sec(const BenchResult &r) {
-  return r.ops * 1.0e9 / r.duration_ns;
+  return static_cast<double>(r.ops) * 1.0e9 / r.duration_ns;
 }
 
 // Spin barrier: all N threads block at arrive_and_wait() until all have
@@ -239,7 +239,12 @@ TEST(AllocPerfTest, SingleThread_ReallocGrowth) {
     void *p = malloc(8);
     static_cast<char *>(p)[0] = 0x1;
     for (size_t sz = 16; sz <= 4096; sz *= 2) {
-      p = realloc(p, sz);
+      void *new_p = realloc(p, sz);
+      if (new_p == nullptr) {
+        free(p);
+        return;
+      }
+      p = new_p;
       static_cast<char *>(p)[sz - 1] = 0x1; // touch new tail
     }
     free(p);
@@ -374,7 +379,12 @@ TEST(AllocPerfTest, MultiThread_ReallocGrowth) {
       void *p = malloc(8);
       static_cast<char *>(p)[0] = 0x1;
       for (size_t sz = 16; sz <= 1024; sz *= 2) {
-        p = realloc(p, sz);
+        void *new_p = realloc(p, sz);
+        if (new_p == nullptr) {
+          free(p);
+          return;
+        }
+        p = new_p;
         static_cast<char *>(p)[sz - 1] = 0x1;
       }
       free(p);

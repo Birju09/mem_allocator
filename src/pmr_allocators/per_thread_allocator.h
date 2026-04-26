@@ -8,7 +8,7 @@ namespace pmr_allocator::internal {
 class PerThreadAllocator : public std::pmr::memory_resource {
 public:
   PerThreadAllocator(const std::size_t max_initial_size);
-  ~PerThreadAllocator() noexcept;
+  ~PerThreadAllocator() noexcept override;
 
   // Returns the usable size of an allocation (needed for realloc).
   size_t allocation_size(void *p) const;
