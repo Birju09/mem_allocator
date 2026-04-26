@@ -58,7 +58,7 @@ pmr_allocator::internal::PerThreadAllocator &get_allocator() {
     if (!ptr) {
       throw std::bad_alloc{};
     }
-    alloc = new (ptr) pmr_allocator::internal::PerThreadAllocator(0x1000000);
+    alloc = new (ptr) pmr_allocator::internal::PerThreadAllocator(0x10000000);
     pthread_setspecific(allocator_key, alloc);
   }
 

@@ -15,26 +15,32 @@ namespace {
 
 constexpr size_t kHeaderSize = 8;
 
-constexpr std::array<size_t, 9> kSizeBins{{
+constexpr std::array<size_t, 14> kSizeBins{{
     16 + kHeaderSize,
+    32 + kHeaderSize,
     64 + kHeaderSize,
+    128 + kHeaderSize,
     256 + kHeaderSize,
     512 + kHeaderSize,
+    786 + kHeaderSize,
     1024 + kHeaderSize,
     2048 + kHeaderSize,
     4096 + kHeaderSize,
+    8192 + kHeaderSize,
     16384 + kHeaderSize,
+    32768 + kHeaderSize,
     65536 + kHeaderSize,
 }};
 
 // Returns the index into kSizeBins for a given size.
 // If bytes exceeds the largest bin, returns kSizeBins.size().
 size_t FindSizeBinIndex(size_t bytes) {
-  for (size_t i = 0; i < kSizeBins.size(); ++i) {
-    if (bytes <= kSizeBins[i])
-      return i;
+  auto it = std::lower_bound(std::begin(kSizeBins), std::end(kSizeBins), bytes);
+
+  if (it == std::end(kSizeBins)) {
+    return kSizeBins.size();
   }
-  return kSizeBins.size();
+  return std::distance(std::begin(kSizeBins), it);
 }
 
 } // namespace
@@ -48,6 +54,8 @@ PerThreadAllocator::PerThreadAllocator(const size_t max_initial_size)
   if (buffer_ == MAP_FAILED) {
     throw std::bad_alloc{};
   }
+
+  buf_end_ = reinterpret_cast<uintptr_t>(buffer_) + buffer_capactiy_;
 }
 
 PerThreadAllocator::~PerThreadAllocator() noexcept {
@@ -79,8 +87,13 @@ size_t PerThreadAllocator::allocation_size(void *p) const {
 }
 
 void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
+  static_assert(kHeaderSize == sizeof(Header));
+
+  void *p = nullptr;
+  auto binIdx = FindSizeBinIndex(bytes + sizeof(Header));
+
   // Sizes above the largest slab bin go directly through mmap.
-  if ((bytes + sizeof(Header)) > kSizeBins.back()) {
+  if (binIdx >= kSizeBins.size()) {
     void *p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE,
                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (p == MAP_FAILED) {
@@ -105,10 +118,6 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
     return p;
   }
 
-  static_assert(kHeaderSize == sizeof(Header));
-
-  void *p = nullptr;
-  auto binIdx = FindSizeBinIndex(bytes + sizeof(Header));
   auto szBin = kSizeBins[binIdx];
   auto &entry = size_slabs_[binIdx];
   void *&head = entry.free_list_head;
@@ -118,8 +127,7 @@ void *PerThreadAllocator::do_allocate(size_t bytes, size_t alignment) {
     // the free list and allocate fresh memory instead.
     uintptr_t head_addr = reinterpret_cast<uintptr_t>(head);
     uintptr_t buf_start = reinterpret_cast<uintptr_t>(buffer_);
-    uintptr_t buf_end = buf_start + buffer_capactiy_;
-    if (head_addr >= buf_start && head_addr < buf_end) {
+    if (head_addr >= buf_start && head_addr < buf_end_) {
       p = head;
       void *next;
       // The next pointer is stored in this free block

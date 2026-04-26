@@ -24,18 +24,19 @@ private:
   void *buffer_{nullptr};
   size_t buffer_capactiy_{};
   size_t buffer_occupied_{};
+  uintptr_t buf_end_;
 
   struct Header {
     size_t sz;
   };
 
   struct SizeBinEntry {
-    void  *free_list_head{nullptr};
+    void *free_list_head{nullptr};
     size_t num_allocated{};
     size_t num_deallocated{};
   };
 
-  static constexpr size_t kNumSizeBins = 9;
+  static constexpr size_t kNumSizeBins = 14;
   std::array<SizeBinEntry, kNumSizeBins> size_slabs_{};
 
   // Fallback allocations (mmap'd blocks > largest slab bin).

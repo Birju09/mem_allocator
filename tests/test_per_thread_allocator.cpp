@@ -97,10 +97,18 @@ TEST(PerThreadAllocatorTest, AllocationSizeAtLeastRequested) {
 TEST(PerThreadAllocatorTest, AllocationSizeMatchesBin) {
   Allocator alloc(1 << 20);
 
-  // Requests that map to the 64-byte bin
-  for (size_t req : {size_t{17}, size_t{32}, size_t{64}}) {
+  // Requests that map to the 32-byte bin (bin 1: 32+8=40)
+  for (size_t req : {size_t{17}, size_t{32}}) {
     void *p = alloc.allocate(req, kAlign);
-    // bin=64, header=8 → usable=56
+    // bin=40, header=8 → usable=32
+    EXPECT_EQ(alloc.allocation_size(p), 32u) << "requested=" << req;
+    alloc.deallocate(p, 0);
+  }
+
+  // Requests that map to the 64-byte bin (bin 2: 64+8=72)
+  for (size_t req : {size_t{33}, size_t{64}}) {
+    void *p = alloc.allocate(req, kAlign);
+    // bin=72, header=8 → usable=64
     EXPECT_EQ(alloc.allocation_size(p), 64u) << "requested=" << req;
     alloc.deallocate(p, 0);
   }
@@ -171,8 +179,8 @@ TEST(PerThreadAllocatorTest, MultipleAllocationsAreDistinct) {
 
 TEST(PerThreadAllocatorTest, WriteAndReadBackAcrossAllBins) {
   Allocator alloc(1 << 20);
-  // One representative size per bin
-  const size_t sizes[] = {9, 57, 249, 505, 1017, 2041, 4089, 16377, 65525};
+  // One representative size per bin (14 bins now)
+  const size_t sizes[] = {9, 17, 57, 120, 249, 505, 785, 1017, 2041, 4089, 8191, 16377, 32767, 65525};
   std::vector<std::pair<void *, size_t>> allocs;
 
   for (size_t sz : sizes) {
@@ -227,10 +235,10 @@ TEST(PerThreadAllocatorTest, PrintMemoryLayout) {
   std::cout << "  Allocator object @ 0x" << std::hex
             << reinterpret_cast<uintptr_t>(&alloc) << std::dec << "\n";
 
-  // One allocation per size bin
-  const size_t test_sizes[] = {1,    8,     9,     56,    57,   248,  249,
-                               504,  505,   1016,  1017,  2040, 2041, 4088,
-                               4089, 16376, 16377, 65524, 65525};
+  // One allocation per size bin (14 bins total)
+  const size_t test_sizes[] = {1,    8,     9,    16,    17,   31,    32,    56,    57,   120,   128,
+                               248,  249,   504,  505,   785,  786,   1016,  1017,  2040, 2041,  4088,
+                               4089, 8190,  8191, 16376, 16377, 32766, 32767, 65524, 65525};
   std::cout << "\n  Bin allocations (header-before layout):";
 
   std::vector<void *> ptrs;
