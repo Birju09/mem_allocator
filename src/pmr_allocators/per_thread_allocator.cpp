@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <new>
 #include <string_view>
 #include <sys/mman.h>
 #include <unistd.h>
