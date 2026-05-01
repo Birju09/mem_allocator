@@ -2,9 +2,11 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <pthread.h>
 #include <string_view>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -59,16 +61,15 @@ PerThreadAllocator::PerThreadAllocator(const size_t max_initial_size)
 }
 
 PerThreadAllocator::~PerThreadAllocator() noexcept {
-  // munmap first, before any other operations that might call into the runtime.
   if (buffer_ != nullptr) {
     munmap(buffer_, buffer_capactiy_);
     buffer_ = nullptr;
   }
 
-  // Only write to stderr if we have outstanding fallback allocations.
   if (fallback_count_ > 0) {
-    constexpr std::string_view msg{"Memory leak detected"};
-    std::ignore = write(STDERR_FILENO, msg.data(), msg.size());
+    constexpr std::string_view msg{"Memory leak detected\n"};
+    std::ignore = write(STDERR_FILENO, msg.data(),
+                        sizeof(std::string_view::value_type) * msg.size());
   }
 }
 
