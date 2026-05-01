@@ -2,11 +2,9 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <new>
-#include <pthread.h>
 #include <string_view>
 #include <sys/mman.h>
 #include <unistd.h>

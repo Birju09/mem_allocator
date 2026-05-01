@@ -5,7 +5,6 @@
 #include <memory>
 #include <new>
 #include <pthread.h>
-#include <stdexcept>
 
 // Real malloc/free obtained via dlsym (to avoid infinite recursion)
 // These are global (not thread_local) since they're the same function pointers
